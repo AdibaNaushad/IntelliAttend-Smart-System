@@ -1,0 +1,15 @@
+# Ignore Database
+attendance.db
+
+# Ignore Student Photos
+dataset/
+
+# Ignore AI Model Memory
+model.pkl
+train_status.json
+
+# Ignore Python Cache
+__pycache__/
+
+# Ignore Virtual Environment
+venv/

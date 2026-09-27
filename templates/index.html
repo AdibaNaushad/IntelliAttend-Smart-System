@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Digital Attendance Dashboard</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background: url("static/images/bg.png") center/cover no-repeat;
+      background-attachment: fixed;
+      /*display: flex;                 /* push content as one column 
+      justify-content: flex-end;
+      align-items: flex-start;*/
+    }
+
+    /* Right panel column */
+    .right-panel {
+      width: 100%;
+      max-width: 850px;
+      min-height: 100vh;              /* tighter max width */
+      padding: 2rem;
+      background: rgba(255,255,255,0.1);
+      overflow-y: auto;              /* scroll if tall */
+    }
+
+    /* Navbar gradient */
+    .nav-gradient {
+      background: linear-gradient(90deg,#0f172a,#3b82f6);
+      margin-bottom: 1.5rem;
+      border-radius: 0.75rem;
+    }
+
+    /* Cards */
+    .glass-card {
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(6px);
+      border-radius: 16px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+      transition: transform 0.2s ease;
+    }
+    .glass-card:hover { transform: translateY(-3px); }
+
+    /* Progress bar */
+    .progress {
+      background-color: #e9ecef;
+      border-radius: 10px;
+    }
+    .progress-bar {
+      background: linear-gradient(90deg, #3b82f6, #0ea5e9);
+      font-weight: 600;
+    }
+
+    /* Small screens: center panel */
+    @media (max-width: 992px) {
+      body { justify-content: center; }
+      .right-panel { max-width: 95vw; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="right-panel">
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark nav-gradient shadow-sm px-3">
+      <div class="container-fluid">
+        <a class="navbar-brand fw-bold" href="/">Digital Attendance</a>
+        <div class="d-flex">
+          <a class="btn btn-outline-light me-2" href="/add_student">Add Student</a>
+          <a class="btn btn-outline-light me-2" href="/mark_attendance">Mark Attendance</a>
+          <a class="btn btn-outline-light" href="/attendance_record">Records</a>
+        </div>
+      </div>
+    </nav>
+
+
+    <!-- this ai chatbot space  -->
+    <div style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; background-color: #f9f9f9;">
+      <h3>Daily AI Insights</h3>
+      <button onclick="generateSummary()"
+        style="padding: 10px 15px; background-color: #4285F4; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+        Generate AI Summary (Gemma)
+      </button>
+      <p id="ai-summary-text" style="margin-top: 15px; font-size: 16px; color: #333;"></p>
+      </div>
+
+    <!-- Dashboard Content -->
+    <!-- Use .container instead of container-fluid to avoid full-width stretch -->
+    <div class="container">
+      <div class="row g-4">
+        <div class="col-lg-4">
+          <div class="card p-3 shadow-sm glass-card">
+            <h5>Quick Actions</h5>
+            <p class="small text-muted">Create student entries, capture faces, or start recognition.</p>
+            <div class="d-grid gap-2">
+              <a class="btn btn-primary" href="/add_student">Add Student</a>
+              <a class="btn btn-success" href="/mark_attendance">Mark Attendance</a>
+              <a class="btn btn-warning" href="/attendance_record">View Records</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-8">
+          <div class="card p-3 shadow-sm glass-card">
+            <div class="d-flex justify-content-between align-items-center">
+              <h5 class="mb-0">Train Model</h5>
+              <button id="trainBtn" class="btn btn-outline-primary">Start Training</button>
+            </div>
+            <div class="mt-3">
+              <div class="progress" style="height:28px;">
+                <div id="trainProgress" class="progress-bar" style="width:0%">0%</div>
+              </div>
+              <div id="trainMsg" class="mt-2 text-muted small">Model not trained yet.</div>
+            </div>
+          </div>
+
+          <div class="card p-3 shadow-sm mt-4 glass-card">
+            <h5>Attendance (Last 30 days)</h5>
+            <div class="chart-container" style="position:relative; height:320px; width:100%;">
+               <canvas id="attendanceChart"></canvas>
+            </div>
+          </div>
+
+
+          <!-- AI Insight Chat Widget -->
+          <div style="margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 10px; border: 1px solid #ddd;">
+            <h3 style="margin-top: 0; color: #333;">🤖 Ask IntelliAttend AI</h3>
+            <p style="color: #666; font-size: 14px;">Ask me about attendance trends, who is missing today, or who needs a
+              reminder.</p>
+          
+            <div style="display: flex; gap: 10px;">
+              <input type="text" id="aiQuestion" placeholder="e.g., Who has low attendance?"
+                style="flex: 1; padding: 10px; border-radius: 5px; border: 1px solid #ccc;">
+              <button id="askAiBtn"
+                style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                Ask AI
+              </button>
+            </div>
+          
+            <!--new  AI Response will appear here -->
+            <div id="aiResponseBox"
+              style="margin-top: 15px; padding: 15px; background-color: white; border-radius: 5px; min-height: 50px; border: 1px solid #eee; display: none;">
+              <em>Waiting for question...</em>
+            </div>
+          </div>
+
+          
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="static/js/dashboard.js"></script>
+  <script>
+    function generateSummary() {
+      const summaryText = document.getElementById('ai-summary-text');
+      summaryText.innerText = "Thinking... Generating summary with Gemma...";
+
+      fetch('/ai_summary')
+        .then(response => response.json())
+        .then(data => {
+          if (data.summary) {
+            summaryText.innerText = data.summary;
+          } else {
+            summaryText.innerText = "Error generating summary: " + data.error;
+          }
+        })
+        .catch(error => {
+          summaryText.innerText = "Failed to connect to the server.";
+          console.error("Error:", error);
+        });
+    }
+  </script>
+
+<script>
+  document.getElementById('askAiBtn').addEventListener('click', function () {
+    const questionInput = document.getElementById('aiQuestion').value;
+    const responseBox = document.getElementById('aiResponseBox');
+
+    if (!questionInput.trim()) return; // Stop if input is empty
+
+    // Show loading state
+    responseBox.style.display = "block";
+    responseBox.innerHTML = '<span style="color: #007bff;">Hmm, let me check the database...</span>';
+
+    // Send question to backend
+    fetch('/ask_ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: questionInput })
+    })
+      .then(response => response.json())
+      .then(data => {
+        // Display AI answer
+        responseBox.innerHTML = '<strong>AI:</strong> ' + data.answer;
+      })
+      .catch(error => {
+        responseBox.innerHTML = '<span style="color: red;">Error connecting to the server.</span>';
+      });
+  });
+</script>
+</body>
+</html>

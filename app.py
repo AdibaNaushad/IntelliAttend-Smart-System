@@ -8,8 +8,110 @@ from flask import Flask, render_template, request, jsonify, send_file, abort
 from model import train_model_background, extract_embedding_for_image, MODEL_PATH
 
 
+#---new hide---
+import os
+from dotenv import load_dotenv
+
+# Wakes up the hidden .env file
+load_dotenv() 
+
+# ---------- Security Configuration ----------
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "default_fallback_key")
+
+
+
+#---gamma ai---
+from ai_assistant import get_ai_explanation
+
+#----oswasp---
+import re
+from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from flask import session, redirect, url_for, flash
+
 #--new ai 
 import requests
+
+# Wakes up the hidden .env file
+
+
+#----mailman----
+import smtplib
+from email.mime.text import MIMEText
+import threading
+
+
+def send_welcome_email(student_email, student_name):
+    sender_email = os.environ.get("EMAIL_USER")
+    app_password = os.environ.get("EMAIL_PASS")
+
+    msg = MIMEText(f"Hello {student_name},\n\nYou have been successfully registered in the IntelliAttend system.")
+    msg['Subject'] = "Registration Successful - IntelliAttend"
+    msg['From'] = sender_email
+    msg['To'] = student_email
+
+    try:
+       server = smtplib.SMTP('smtp.gmail.com', 587)
+       server.ehlo()
+       server.starttls() # This secures the connection
+       server.login(sender_email, app_password)
+       server.send_message(msg)
+       server.quit()
+       print(f" Real welcome email sent to {student_email}")
+       
+       
+       
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
+
+def send_alert_email(student_email, student_name, message_body):
+    sender_email = os.environ.get("EMAIL_USER")
+    app_password = os.environ.get("EMAIL_PASS")
+   
+
+    msg = MIMEText(message_body)
+    msg['Subject'] = f"Attendance Alert for {student_name}"
+    msg['From'] = sender_email
+    msg['To'] = student_email
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.ehlo()
+        server.starttls()
+        server.login(sender_email, app_password)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        print(f" Failed to send email: {e}")
+        return False
+    
+    
+    
+    
+    
+    
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -22,6 +124,41 @@ TRAIN_STATUS_FILE = os.path.join(APP_DIR, "train_status.json")
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
+# ---------- Security Configuration ----------
+# Use an environment variable for the secret key, with a fallback for local hackathon testing
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "hackathon_super_secret_key_123")
+
+# Admin credentials (Password is dynamically hashed so plaintext is not hardcoded as a persistent string)
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_HASH", generate_password_hash("admin123"))
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+EMAIL_REGEX = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# ---------- Authentication Decorator ----------
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("logged_in"):
+            # Return JSON 401 for API routes, redirect to login for UI routes
+            if request.is_json or request.path.startswith('/train_') or request.path.startswith('/students'):
+                return jsonify({"error": "Unauthorized. Admin access required."}), 401
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# ---------- Global Error Handler ----------
+@app.errorhandler(Exception)
+def handle_exception(e):
+    app.logger.error(f"Server Error: {e}")
+    # Do not leak stack traces to the user
+    return jsonify({"error": "Something went wrong. Please try again."}), 500
+
+
+
 # ---------- DB helpers ----------
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -31,7 +168,7 @@ def init_db():
                     name TEXT NOT NULL,
                     roll TEXT,
                     class TEXT,
-                    section TEXT,
+                    email TEXT,
                     reg_no TEXT,
                     created_at TEXT
                 )""")
@@ -62,12 +199,43 @@ write_train_status({"running": False, "progress": 0, "message": "No training yet
 
 # ---------- Routes ----------
 @app.route("/")
+@login_required
 def index():
     return render_template("index.html")
 
 
+
+
+# ---------- Login & Logout Routes ----------
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        
+        # Verify credentials using Werkzeug hash checking
+        if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+            session["logged_in"] = True
+            return redirect(url_for("index"))
+        
+        # If login fails, reload page with error message
+        return render_template("login.html", error="Invalid username or password")
+    
+    # If request is GET, just show the login page
+    return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.clear() # Destroys the session token securely
+    return redirect(url_for("login"))
+
+
+
+
+
 #--- gemini api ----
 @app.route("/ai_summary", methods=["GET"])
+@login_required
 def ai_summary():
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -92,7 +260,7 @@ def ai_summary():
         import urllib.request
         import json
         
-        api_key = "YOUR_GEMINI_API_KEY"
+        api_key = os.environ.get("GEMINI_API_KEY")
         # Use the standard generateContent URL with the API key in the query string
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={api_key}"
         
@@ -123,6 +291,7 @@ def ai_summary():
     
 # Dashboard simple API for attendance stats (last 30 days)
 @app.route("/attendance_stats")
+@login_required
 def attendance_stats():
     import pandas as pd
     conn = sqlite3.connect(DB_PATH)
@@ -140,6 +309,7 @@ def attendance_stats():
 
 # -------- Add student (form) --------
 @app.route("/add_student", methods=["GET", "POST"])
+@login_required
 def add_student():
     if request.method == "GET":
         return render_template("add_student.html")
@@ -148,24 +318,40 @@ def add_student():
     name = data.get("name","").strip()
     roll = data.get("roll","").strip()
     cls = data.get("class","").strip()
-    sec = data.get("sec","").strip()
+    email = data.get("email","").strip()
     reg_no = data.get("reg_no","").strip()
-    if not name:
-        return jsonify({"error":"name required"}), 400
+    # if not name:
+        # return jsonify({"error":"name required"}), 400
+
+    # --- NEW: Input Validation ---
+    if not name or not re.match(r"^[A-Za-z\s]+$", name):
+        return jsonify({"error":"Invalid name. Use letters and spaces only."}), 400
+    if email and not re.match(EMAIL_REGEX, email):
+        return jsonify({"error":"Invalid email format."}), 400
+
+    
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     now = datetime.datetime.utcnow().isoformat()
-    c.execute("INSERT INTO students (name, roll, class, section, reg_no, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-              (name, roll, cls, sec, reg_no, now))
+    c.execute("INSERT INTO students (name, roll, class, email, reg_no, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+              (name, roll, cls, email, reg_no, now))
     sid = c.lastrowid
     conn.commit()
     conn.close()
     # create dataset folder for this student
     os.makedirs(os.path.join(DATASET_DIR, str(sid)), exist_ok=True)
+
+    # NEW: Trigger the email in the background
+    if email:
+        email_thread = threading.Thread(target=send_welcome_email, args=(email, name))
+        email_thread.start()
+
+
     return jsonify({"student_id": sid})
 
 # -------- Upload face images (after capture) --------
 @app.route("/upload_face", methods=["POST"])
+@login_required
 def upload_face():
     student_id = request.form.get("student_id")
     if not student_id:
@@ -176,7 +362,13 @@ def upload_face():
     if not os.path.isdir(folder):
         os.makedirs(folder, exist_ok=True)
     for f in files:
+        # --- NEW: Secure File Validation ---
+     if f and allowed_file(f.filename):
         try:
+            # secure_filename strips malicious directory paths (like ../../)
+            safe_name = secure_filename(f.filename)
+            ext = safe_name.rsplit('.', 1)[1].lower()
+
             fname = f"{datetime.datetime.utcnow().timestamp():.6f}_{saved}.jpg"
             path = os.path.join(folder, fname)
             f.save(path)
@@ -187,6 +379,7 @@ def upload_face():
 
 # -------- Train model (start background thread) --------
 @app.route("/train_model", methods=["GET"])
+@login_required
 def train_model_route():
     # if already running, respond accordingly
     status = read_train_status()
@@ -247,6 +440,7 @@ def recognize_face():
 
 # -------- Attendance records & filters --------
 @app.route("/attendance_record", methods=["GET"])
+@login_required
 def attendance_record():
     period = request.args.get("period", "all")  # all, daily, weekly, monthly
     conn = sqlite3.connect(DB_PATH)
@@ -273,6 +467,7 @@ def attendance_record():
 
 # -------- CSV download --------
 @app.route("/download_csv", methods=["GET"])
+@login_required
 def download_csv():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -290,16 +485,18 @@ def download_csv():
 
 # -------- Students API for listing/editing --------
 @app.route("/students", methods=["GET"])
+@login_required
 def students_list():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT id, name, roll, class, section, reg_no, created_at FROM students ORDER BY id DESC")
+    c.execute("SELECT id, name, roll, class, email, reg_no, created_at FROM students ORDER BY id DESC")
     rows = c.fetchall()
     conn.close()
-    data = [ {"id":r[0],"name":r[1],"roll":r[2],"class":r[3],"section":r[4],"reg_no":r[5],"created_at":r[6]} for r in rows ]
+    data = [ {"id":r[0],"name":r[1],"roll":r[2],"class":r[3],"email":r[4],"reg_no":r[5],"created_at":r[6]} for r in rows ]
     return jsonify({"students": data})
 
 @app.route("/students/<int:sid>", methods=["DELETE"])
+@login_required
 def delete_student(sid):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -316,122 +513,60 @@ def delete_student(sid):
 
 
 # -------- AI Absence Notice Generator --------
+
+
+
+# -------- AI Absence Notice Generator --------
 @app.route("/generate_absence_notices", methods=["GET"])
+@login_required
 def generate_absence_notices():
     try:
-        # 1. Connect to the database safely
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         
-        # 2. Find students who do NOT have attendance recorded today
         today = datetime.date.today().isoformat()
-        c.execute("SELECT id, name FROM students WHERE id NOT IN (SELECT student_id FROM attendance WHERE date(timestamp) = ?)", (today,))
+        c.execute("SELECT id, name, email FROM students WHERE id NOT IN (SELECT student_id FROM attendance WHERE date(timestamp) = ?)", (today,))
         absent_students = c.fetchall()
         conn.close()
 
-        # 3. If everyone is present, stop here
         if not absent_students:
             return jsonify({"status": "success", "message": "All students are present today! No notices needed."})
 
-        # 4. Extract just the names of the absent students
-        names_list = ", ".join([row[1] for row in absent_students])
-        
-        # 5. Create a fake AI response for testing (we will connect real AI later)
-        ai_response = f"Drafted Notice: 'Dear Parent, our records indicate {names_list} missed class today. Please confirm the reason for absence.'"
+        #-----email
+        sent_count = 0
+        for student in absent_students:
+            student_id, name, email = student
+            if email:
+                message = f"Dear {name},\n\nOur records indicate you missed class today. Please ensure you maintain the required attendance threshold."
+                if send_alert_email(email, name, message):
+                    sent_count += 1
 
-        return jsonify({"status": "success", "message": ai_response})
+        return jsonify({"status": "success", "message": f"Successfully sent {sent_count} absence emails."})
         
     except Exception as e:
         app.logger.error(f"Notice Generator Error: {e}")
         return jsonify({"status": "error", "message": "An error occurred while generating notices."}), 500
-    
+
+       
 
 
-# -------- new Attendance AI Insight Chat --------
+# -------- AI Attendance Assistant --------
 @app.route("/ask_ai", methods=["POST"])
 def ask_ai():
-    try:
-        data = request.get_json()
-        question = data.get("question", "")
+    req_data = request.json
+    action = req_data.get("action", "summary")
+    student_data = req_data.get("data", {})
 
-        # 1. Safely read the database to get the latest stats
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        
-        # Get total days present for each student
-        c.execute("""
-            SELECT s.name, COUNT(a.id) 
-            FROM students s 
-            LEFT JOIN attendance a ON s.id = a.student_id 
-            GROUP BY s.id
-        """)
-        records = c.fetchall()
-        
-        # Get who is specifically present today
-        today = datetime.date.today().isoformat()
-        c.execute("SELECT name FROM attendance WHERE date(timestamp) = ?", (today,))
-        present_today = [r[0] for r in c.fetchall()]
-        conn.close()
+    if not student_data or "student" not in student_data:
+        return jsonify({"success": False, "message": "Invalid attendance data provided."}), 400
 
-        # 2. Translate the raw data into a text format Gemma can understand
-        attendance_summary = ", ".join([f"{row[0]} ({row[1]} days present)" for row in records])
-        today_summary = ", ".join(present_today) if present_today else "Nobody yet"
+    success, ai_response = get_ai_explanation(student_data, action)
 
-        # 3. Build the prompt for Gemma
-        ai_prompt = f"""
-        You are the IntelliAttend AI assistant. Answer the teacher's question using ONLY this data:
-        - Overall Attendance: {attendance_summary}
-        - Students Present Today: {today_summary}
-        
-        Teacher's question: "{question}"
-        """
+    if success:
+        return jsonify({"success": True, "response": ai_response})
+    else:
+        return jsonify({"success": False, "message": ai_response}), 503
 
-        # 4. Connect to Open-Source Gemma AI (via Hugging Face)
-        API_URL = "https://api-inference.huggingface.co/models/google/gemma-1.1-7b-it"
-        headers = {"Authorization": "Bearer YOUR_HUGGINGFACE_TOKEN"} # <-- Put your Hugging Face token here
-
-        # Tell Gemma exactly how to behave (Grounding)
-        system_instructions = "You are a school database assistant. You must ONLY use the provided data to answer the question. Keep your answer under 3 sentences. Do not make up information."
-        
-        full_prompt = f"{system_instructions}\n\nData:\n- Overall Attendance: {attendance_summary}\n- Present Today: {today_summary}\n\nTeacher Question: {question}\nAnswer:"
-
-        payload = {
-            "inputs": full_prompt,
-            "parameters": {
-                "max_new_tokens": 100,
-                "temperature": 0.2, # Low temperature forces the AI to stick to the facts
-                "return_full_text": False
-            }
-        }
-
-        # Tell Python to ignore any invisible proxy settings on your computer
-        proxies = {
-            "http": None,
-            "https": None
-        }
-
-        # Send the data to Gemma with the proxy bypass and the correct try/except blocks
-        try:
-            response = requests.post(API_URL, headers=headers, json=payload, proxies=proxies, timeout=10)
-            
-            if response.status_code == 200:
-                result = response.json()
-                ai_answer = result[0]['generated_text'].strip()
-            elif response.status_code == 503:
-                ai_answer = "The open-source AI is currently overloaded. Please wait a moment."
-            else:
-                ai_answer = f"AI API Error: Received status code {response.status_code}"
-                
-        except requests.exceptions.ConnectionError:
-            ai_answer = "Network Error: Could not connect to the AI server. Please check your firewall."
-        except requests.exceptions.Timeout:
-            ai_answer = "Network Timeout: The AI server took too long to respond."
-
-        return jsonify({"answer": ai_answer})
-
-    except Exception as e:
-        app.logger.error(f"AI Chat Error: {e}")
-        return jsonify({"answer": "I am having trouble connecting to the database right now."}), 500
 
 
     

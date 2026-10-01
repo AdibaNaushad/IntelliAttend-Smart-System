@@ -66,6 +66,12 @@
 </head>
 <body>
 
+  <div class="nav-gradient "
+    style="text-align: right; padding: 10px; font-family: Segoe UI;border-radius: 0;   border-bottom: 1px solid #ddd;">
+    <span>Logged in as <strong>Admin</strong> | </span>
+    <a href="/logout" style="color: #c43b49; text-decoration: none; font-weight: semibold;">Logout</a>
+  </div>
+
   <div class="right-panel">
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark nav-gradient shadow-sm px-3">
@@ -80,15 +86,194 @@
     </nav>
 
 
-    <!-- this ai chatbot space  -->
-    <div style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; background-color: #f9f9f9;">
-      <h3>Daily AI Insights</h3>
-      <button onclick="generateSummary()"
-        style="padding: 10px 15px; background-color: #4285F4; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
-        Generate AI Summary (Gemma)
-      </button>
-      <p id="ai-summary-text" style="margin-top: 15px; font-size: 16px; color: #333;"></p>
+    <!-- 🤖 AI Attendance Assistant UI -->
+    <style>
+      .ai-assistant-container {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        margin: 24px 0;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+    
+      .ai-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+    
+      .ai-header h4 {
+        margin: 0;
+        color: #0f172a;
+        font-size: 1.25rem;
+        font-weight: 600;
+      }
+    
+      .ai-icon {
+        font-size: 1.5rem;
+        background: linear-gradient(135deg, #6366f1, #a855f7);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+    
+      .ai-description {
+        color: #64748b;
+        font-size: 0.95rem;
+        margin-top: 0;
+        margin-bottom: 20px;
+      }
+    
+      .ai-button-group {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+    
+      .ai-btn {
+        background: #f8fafc;
+        border: 1px solid #cbd5e1;
+        color: #334155;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+    
+      .ai-btn:hover {
+        background: #f1f5f9;
+        border-color: #94a3b8;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        transform: translateY(-1px);
+      }
+    
+      .ai-btn:active {
+        transform: translateY(0);
+      }
+    
+      .ai-response-box {
+        margin-top: 24px;
+        padding: 16px 20px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-left: 4px solid #6366f1;
+        border-radius: 8px;
+        color: #334155;
+        font-size: 0.95rem;
+        line-height: 1.6;
+        animation: fadeIn 0.3s ease-in;
+      }
+    
+      .ai-loading {
+        margin-top: 24px;
+        color: #64748b;
+        font-size: 0.95rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+    
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(5px);
+        }
+    
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+    
+    <div class="ai-assistant-container">
+      <div class="ai-header">
+        <span class="ai-icon">✨</span>
+        <h4>AI Attendance Assistant</h4>
       </div>
+      <p class="ai-description">Get instant, AI-generated insights based on your exact attendance data.</p>
+    
+      <div class="ai-button-group">
+        <button class="btn btn-primary" onclick="askAI('explain')">Explain My Attendance</button>
+        <button class="btn btn-success" onclick="askAI('improve')">How Can I Improve?</button>
+        <button class="btn btn-warning" onclick="askAI('summary')">Generate Summary</button>
+      </div>
+    
+      <!-- Loading state -->
+      <div id="ai-loading" class="ai-loading" style="display: none;">
+        <i>⏳ Gemma is analyzing your records...</i>
+      </div>
+    
+      <!-- AI Response output -->
+      <div id="ai-response-box" class="ai-response-box" style="display: none;"></div>
+    </div>
+    
+    <script>
+      // Mock data representing a selected student for testing
+      const currentStudentData = {
+        "student": "Test Student",
+        "present": 31,
+        "absent": 19,
+        "total": 50,
+        "attendance": 62,
+        "required": 75
+      };
+
+      function askAI(actionType) {
+        const loadingDiv = document.getElementById('ai-loading');
+        const responseBox = document.getElementById('ai-response-box');
+
+        loadingDiv.style.display = 'flex';
+        responseBox.style.display = 'none';
+        responseBox.innerText = '';
+
+        fetch('/ask_ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: actionType, data: currentStudentData })
+        })
+          .then(response => response.json())
+          .then(data => {
+            loadingDiv.style.display = 'none';
+            responseBox.style.display = 'block';
+
+            if (data.success) {
+              responseBox.innerText = data.response;
+            } else {
+              responseBox.innerText = "⚠️ " + data.message;
+            }
+          })
+          .catch(error => {
+            loadingDiv.style.display = 'none';
+            responseBox.style.display = 'block';
+            responseBox.innerText = "⚠️ AI Assistant is currently unavailable. Your attendance data is still available.";
+          });
+      }
+    </script>
+   
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+
+  
+  
+   
+   
 
     <!-- Dashboard Content -->
     <!-- Use .container instead of container-fluid to avoid full-width stretch -->
@@ -128,27 +313,16 @@
           </div>
 
 
-          <!-- AI Insight Chat Widget -->
-          <div style="margin-top: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 10px; border: 1px solid #ddd;">
-            <h3 style="margin-top: 0; color: #333;">🤖 Ask IntelliAttend AI</h3>
-            <p style="color: #666; font-size: 14px;">Ask me about attendance trends, who is missing today, or who needs a
-              reminder.</p>
+        
+        
+        
+        
+        
           
-            <div style="display: flex; gap: 10px;">
-              <input type="text" id="aiQuestion" placeholder="e.g., Who has low attendance?"
-                style="flex: 1; padding: 10px; border-radius: 5px; border: 1px solid #ccc;">
-              <button id="askAiBtn"
-                style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                Ask AI
-              </button>
-            </div>
+        
+                    
           
-            <!--new  AI Response will appear here -->
-            <div id="aiResponseBox"
-              style="margin-top: 15px; padding: 15px; background-color: white; border-radius: 5px; min-height: 50px; border: 1px solid #eee; display: none;">
-              <em>Waiting for question...</em>
-            </div>
-          </div>
+          
 
           
         </div>
@@ -178,32 +352,7 @@
     }
   </script>
 
-<script>
-  document.getElementById('askAiBtn').addEventListener('click', function () {
-    const questionInput = document.getElementById('aiQuestion').value;
-    const responseBox = document.getElementById('aiResponseBox');
 
-    if (!questionInput.trim()) return; // Stop if input is empty
 
-    // Show loading state
-    responseBox.style.display = "block";
-    responseBox.innerHTML = '<span style="color: #007bff;">Hmm, let me check the database...</span>';
-
-    // Send question to backend
-    fetch('/ask_ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: questionInput })
-    })
-      .then(response => response.json())
-      .then(data => {
-        // Display AI answer
-        responseBox.innerHTML = '<strong>AI:</strong> ' + data.answer;
-      })
-      .catch(error => {
-        responseBox.innerHTML = '<span style="color: red;">Error connecting to the server.</span>';
-      });
-  });
-</script>
 </body>
 </html>

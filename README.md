@@ -416,6 +416,41 @@ Planned possibilities include:
 
 ---
 
+### 🛡️ Security & OWASP Implementation
+
+IntelliAttend includes a lightweight security layer designed to protect sensitive student biometric data, attendance records, and administrative actions:
+
+* **Authentication & Access Control:** The admin dashboard, database modifications, and machine learning training endpoints are protected by Flask session-based authentication, preventing unauthorized access.
+* **Secure Password Hashing:** Passwords are never stored or evaluated in plaintext. They are dynamically hashed and verified using Werkzeug's cryptographic utilities.
+* **Input Validation:** Form submissions (such as student names and emails) are strictly validated using Regular Expressions to prevent injection and format-based errors.
+* **Secure File Uploads:** Uploaded facial images are validated against a strict list of allowed file extensions (`.jpg`, `.jpeg`, `.png`) and sanitized using `secure_filename()` to prevent malicious file execution and path traversal attacks.
+* **Credential Protection:** Sensitive API keys, email credentials, and the Flask secret key are isolated from the source code using a local `.env` configuration file.
+
+---
+
+### 📝 Updates to Add to Your Existing README Sections
+
+**Add to the "Technology Stack" Table:**
+
+| Technology | Purpose |
+| --- | --- |
+| `python-dotenv` | Environment variable & secret management |
+| `Werkzeug Security` | Cryptographic password hashing & file sanitization |
+
+**Add to the "Main API Endpoints" Table:**
+
+| Endpoint | Purpose |
+| --- | --- |
+| `/login` | Admin authentication portal |
+| `/logout` | Terminate secure session |
+
+**Update the "Installation" Step 3:**
+
+```powershell
+python -m pip install flask pandas numpy==1.26.4 opencv-python==4.10.0.84 mediapipe==0.10.21 scikit-learn python-dotenv
+
+```
+
 ## 👩‍💻 Author
 
 **Adiba Naushad**
